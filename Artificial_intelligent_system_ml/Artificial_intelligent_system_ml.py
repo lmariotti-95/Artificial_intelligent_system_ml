@@ -10,7 +10,7 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.preprocessing import label_binarize
 
 from sklearn.metrics import accuracy_score, balanced_accuracy_score, precision_score, recall_score, f1_score, confusion_matrix
-from sklearn.metrics import roc_curve, auc
+from sklearn.metrics import roc_curve, roc_auc_score
 
 import seaborn as sns
 import numpy as np  
@@ -29,8 +29,9 @@ class Metric:
     f1 = None
     conf_matrix = None
     
-    fpr = dict()
-    tpr = dict()
+    fpr = None
+    tpr = None
+    auc = None
     
     def __init__(self, name):
         self.name = name
@@ -52,29 +53,24 @@ class Metric:
         print("\n")
        
     def Plot_confusion_matrix(self):
-        heatmap = sns.heatmap(self.conf_matrix, annot=True, cmap='viridis')
+        heatmap = sns.heatmap(self.conf_matrix, annot=True, cmap="viridis")
         heatmap.set_title(f"{self.name} Confusion Matrix")
         plt.show()
         
     def Plot_roc_curve(self):
-        # Plotta la curva ROC per ogni classe
-        #plt.figure(figsize=(8, 8))
-
-        for i in range(len(self.classes)):
-            plt.plot(self.fpr[i], self.tpr[i], lw=2, label=f'ROC curve (class {self.classes[i]})')
-
-        plt.plot([0, 1], [0, 1], 'k--', lw=2)
-        plt.xlim([0.0, 1.0])
+        plt.plot(self.fpr, self.tpr, label=f"AUC={self.auc:.4f}")
+        plt.plot([0, 1], [0, 1], "k--", lw=2)
+        plt.xlim([0.0, 1.05])
         plt.ylim([0.0, 1.05])
-        plt.xlabel('False Positive Rate')
-        plt.ylabel('True Positive Rate')
-        plt.title('Receiver Operating Characteristic (ROC) Curve')
-        plt.legend(loc='lower right')
+        plt.xlabel("False Positive Rate")
+        plt.ylabel("True Positive Rate")
+        plt.title(f"{self.name} ROC Curve")
+        plt.legend(loc="lower right")
         plt.show()
         
 
 def Use_decision_tree_classifier(x_train, x_test, y_train, y_test, metric):
-    classifier = DecisionTreeClassifier()
+    classifier = DecisionTreeClassifier(max_depth=4)
     classifier.fit(x_train, y_train)
     predictions = classifier.predict(x_test)
     
@@ -86,18 +82,9 @@ def Use_decision_tree_classifier(x_train, x_test, y_train, y_test, metric):
     metric.f1 = f1_score(y_test, predictions, average = "weighted", zero_division=0)
     metric.conf_matrix = confusion_matrix(y_test, predictions)
     
-    #y_score = classifier.predict_proba(x_test)
-    #y_test_bin = label_binarize(y_test, classes=classifier.classes_)
-    #
-    ## Calcola la curva ROC per ogni classe
-    #fpr = dict()
-    #tpr = dict()
-    #
-    #for i in range(len(classifier.classes_)):
-    #    fpr[i], tpr[i], _ = roc_curve(y_test_bin[:, i], y_score[:, i])
-    #
-    #metric.fpr = fpr
-    #metric.tpr = tpr
+    y_pred_proba = classifier.predict_proba(x_test)[:,1]
+    metric.fpr, metric.tpr, _ = roc_curve(y_test, y_pred_proba)
+    metric.auc = roc_auc_score(y_test, y_pred_proba)
     
 def Use_knn_classifier(x_train, x_test, y_train, y_test, metric):
     classifier = KNeighborsClassifier()
@@ -112,18 +99,9 @@ def Use_knn_classifier(x_train, x_test, y_train, y_test, metric):
     metric.f1 = f1_score(y_test, predictions, average = "weighted", zero_division=0)
     metric.conf_matrix = confusion_matrix(y_test, predictions)
     
-    #y_score = classifier.predict_proba(x_test)
-    #y_test_bin = label_binarize(y_test, classes=classifier.classes_)
-    #
-    ## Calcola la curva ROC per ogni classe
-    #fpr = dict()
-    #tpr = dict()
-    #
-    #for i in range(len(classifier.classes_)):
-    #    fpr[i], tpr[i], _ = roc_curve(y_test_bin[:, i], y_score[:, i])
-    #
-    #metric.fpr = fpr
-    #metric.tpr = tpr
+    y_pred_proba = classifier.predict_proba(x_test)[::,1]
+    metric.fpr, metric.tpr, _ = roc_curve(y_test, y_pred_proba)
+    metric.auc = roc_auc_score(y_test, y_pred_proba)
 
 """
 Verify if a given list of metrics is valid aka:
@@ -156,7 +134,7 @@ def Plot_metrics(metrics, verbose = False):
     x_lables = metrics[0].Get_metrics().keys()
     x_values = np.arange(len(x_lables)) 
     
-    width = .25     # Bar width
+    width = .15     # Bar width
     x_offset = 0    # Offset over x axis
     for m in metrics:
         y_values = m.Get_metrics().values()
@@ -176,7 +154,7 @@ def Plot_metrics(metrics, verbose = False):
     plt.xlabel("Metrics") 
     plt.ylabel("Value") 
     plt.title("Metrics comparison") 
-    plt.legend() 
+    plt.legend(loc='upper center', bbox_to_anchor=(0.5, -0.05), fancybox=True, shadow=True, ncol=5)
     plt.show() 
 
 def Record_metrics(metrics, file_name):
@@ -257,7 +235,7 @@ def main():
     plot_metrics = True
     save_result = False
 
-    test_size = .1
+    test_size = .25
     
     dt_metric = []
     knn_metric = []
@@ -275,6 +253,9 @@ def main():
     knn_metric.append(knn)
 
     if (plot_metrics):
+        print(f"Training size: {1-test_size}")
+        print(f"Testing size: {test_size}") 
+        
         Plot_metrics([dt, knn])
         
         dt.Print()
@@ -282,12 +263,9 @@ def main():
         
         dt.Plot_confusion_matrix()
         knn.Plot_confusion_matrix()
-        
-        """   
+          
         dt.Plot_roc_curve()
-            
         knn.Plot_roc_curve()
-        """   
 
     # Save result to csv for some report statistics
     if (save_result):
@@ -318,4 +296,6 @@ def main():
         plt.show()
     """
     
-main()
+import preprocess as preproc
+
+preproc.main()
