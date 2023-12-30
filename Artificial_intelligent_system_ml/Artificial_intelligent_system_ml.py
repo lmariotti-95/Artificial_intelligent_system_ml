@@ -1,11 +1,14 @@
 # Import delle librerie necessarie
 from multiprocessing import get_all_start_methods
+from shutil import register_unpack_format
+from numpy.random import f
 from scipy.sparse import data
 from sklearn.model_selection import train_test_split
 from sklearn.datasets import make_multilabel_classification
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn import svm
+from sklearn.svm import SVC
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.preprocessing import label_binarize
 
@@ -19,6 +22,9 @@ import pandas as pd
 from time import time
 from collections import Counter
 
+from imblearn.over_sampling import RandomOverSampler
+from imblearn.under_sampling import  RandomUnderSampler
+
 class Metric:
     name = ""
     classes = None
@@ -27,11 +33,11 @@ class Metric:
     precision = None
     recall_score = None
     f1 = None
-    conf_matrix = None
+    conf_matrix = []
     
-    fpr = None
-    tpr = None
-    auc = None
+    fpr = []
+    tpr = []
+    auc = []
     
     def __init__(self, name):
         self.name = name
@@ -53,11 +59,17 @@ class Metric:
         print("\n")
        
     def Plot_confusion_matrix(self):
+        if(len(self.conf_matrix) == 0):
+            return
+        
         heatmap = sns.heatmap(self.conf_matrix, annot=True, cmap="viridis")
         heatmap.set_title(f"{self.name} Confusion Matrix")
         plt.show()
         
     def Plot_roc_curve(self):
+        if(len(self.fpr) == 0 or len(self.tpr) == 0):
+            return
+        
         plt.plot(self.fpr, self.tpr, label=f"AUC={self.auc:.4f}")
         plt.plot([0, 1], [0, 1], "k--", lw=2)
         plt.xlim([0.0, 1.05])
@@ -68,9 +80,11 @@ class Metric:
         plt.legend(loc="lower right")
         plt.show()
         
-
+"""
+Handle decision tree classifier
+"""
 def Use_decision_tree_classifier(x_train, x_test, y_train, y_test, metric):
-    classifier = DecisionTreeClassifier(max_depth=4)
+    classifier = DecisionTreeClassifier()
     classifier.fit(x_train, y_train)
     predictions = classifier.predict(x_test)
     
@@ -82,11 +96,15 @@ def Use_decision_tree_classifier(x_train, x_test, y_train, y_test, metric):
     metric.f1 = f1_score(y_test, predictions, average = "weighted", zero_division=0)
     metric.conf_matrix = confusion_matrix(y_test, predictions)
     
+    # https://scikit-learn.org/stable/modules/generated/sklearn.metrics.roc_curve.html#sklearn.metrics.roc_curve
     y_pred_proba = classifier.predict_proba(x_test)[:,1]
     metric.fpr, metric.tpr, _ = roc_curve(y_test, y_pred_proba)
     metric.auc = roc_auc_score(y_test, y_pred_proba)
     
-def Use_knn_classifier(x_train, x_test, y_train, y_test, metric):
+"""
+Nearest neighbors classifier
+"""
+def Use_knn_classifier(x_train, x_test, y_train, y_test, metric, over_sample = False):
     classifier = KNeighborsClassifier()
     classifier.fit(x_train,y_train)
     predictions = classifier.predict(x_test)
@@ -99,6 +117,28 @@ def Use_knn_classifier(x_train, x_test, y_train, y_test, metric):
     metric.f1 = f1_score(y_test, predictions, average = "weighted", zero_division=0)
     metric.conf_matrix = confusion_matrix(y_test, predictions)
     
+    # https://scikit-learn.org/stable/modules/generated/sklearn.metrics.roc_curve.html#sklearn.metrics.roc_curve
+    y_pred_proba = classifier.predict_proba(x_test)[::,1]
+    metric.fpr, metric.tpr, _ = roc_curve(y_test, y_pred_proba)
+    metric.auc = roc_auc_score(y_test, y_pred_proba)
+    
+"""
+Support Vector Machine (SVM)
+"""
+def Use_svm_classifier(x_train, x_test, y_train, y_test, metric):
+    classifier = SVC(class_weight='balanced', probability=True)
+    classifier.fit(x_train, y_train)
+    predictions = classifier.predict(x_test)
+    
+    metric.classes = classifier.classes_    
+    metric.accuracy = accuracy_score(y_test, predictions)
+    metric.missclassification = 1 - metric.accuracy
+    metric.precision = precision_score(y_test, predictions, average = "weighted", zero_division=0)
+    metric.recall_score = recall_score(y_test, predictions, average = "weighted", zero_division=0)
+    metric.f1 = f1_score(y_test, predictions, average = "weighted", zero_division=0)
+    metric.conf_matrix = confusion_matrix(y_test, predictions)
+    
+    # https://scikit-learn.org/stable/modules/generated/sklearn.metrics.roc_curve.html#sklearn.metrics.roc_curve
     y_pred_proba = classifier.predict_proba(x_test)[::,1]
     metric.fpr, metric.tpr, _ = roc_curve(y_test, y_pred_proba)
     metric.auc = roc_auc_score(y_test, y_pred_proba)
@@ -125,7 +165,7 @@ def Are_valid_metrics(metric_list):
 Given a series of metrics plot their data
 Verbose = True to enable value printing on console
 """
-def Plot_metrics(metrics, verbose = False):
+def Plot_metrics(metrics):
     # Watchdog for arguments consistency
     if(Are_valid_metrics(metrics) == False):
         return
@@ -137,6 +177,9 @@ def Plot_metrics(metrics, verbose = False):
     width = .15     # Bar width
     x_offset = 0    # Offset over x axis
     for m in metrics:
+        if(m.accuracy == None):
+            continue
+        
         y_values = m.Get_metrics().values()
         plt.bar(x_values + x_offset, y_values, width=width, label=m.name)
         
@@ -146,10 +189,6 @@ def Plot_metrics(metrics, verbose = False):
         
         # Moving offset to the right
         x_offset = x_offset + width
-        
-        # Print on console if verbose is enabled
-        if verbose == True:
-            m.Print()
     
     plt.xlabel("Metrics") 
     plt.ylabel("Value") 
@@ -195,9 +234,13 @@ training_perc: float (0, 1)
     
 labels: list of strings
     Class names used as target for ML algorithms
+    
+sampling: string default = None
+    "oversampling" - Enable oversampling for compensate imbalanced classes
+    "undersampleing" - Enable undersampleing for compensate imbalanced classes
+    "None" - Classes are loaded "as it is"
 """
-def Load_dataset(file_name, test_perc, class_label, verbose=False, plot=False):
-    t_start = time()
+def Load_dataset(file_name, test_perc, class_label, sampling = None, plot=False):
     raw_data = pd.read_csv(file_name)
     
     data = raw_data.drop(columns=class_label)
@@ -205,13 +248,15 @@ def Load_dataset(file_name, test_perc, class_label, verbose=False, plot=False):
     
     x_train, x_test, y_train, y_test = train_test_split(data, target, test_size=test_perc, random_state=42)
     
-    t_duration = time() - t_start
-    
-    if (verbose == True):
-        print(f"Input data size: {format(size_mb(file_name), '.6f')}MB")
-        print(f"Training duration: {format(t_duration, '.4f')}s")
-        print("\n")
-    
+    # Check for sampling condition
+    if(sampling != None):
+        if(sampling == "oversampling"):
+            ros = RandomOverSampler(random_state=42)
+            x_train, y_train = ros.fit_resample(x_train, y_train)
+        elif(sampling == "undersampling"):
+            ros =  RandomUnderSampler(random_state=42)
+            x_train, y_train = ros.fit_resample(x_train, y_train)
+
     # Plot the distribution of class values
     if (plot == True):
         cnt = Counter(target.values)
@@ -228,74 +273,80 @@ def Load_dataset(file_name, test_perc, class_label, verbose=False, plot=False):
     return (x_train, x_test, y_train, y_test)
 #endregion
 
-def main():
+def main(verbose = False):
     class_label = "Bankrupt?"
     dataset_filename = "data_set\Company_Bankruptcy_Prediction.csv"
     
     plot_metrics = True
     save_result = False
+    dataset_sampling = "oversampling"
 
     test_size = .25
     
-    dt_metric = []
-    knn_metric = []
+    if(verbose):
+        print("Start training..")
+        print(f"Sampling type: {dataset_sampling}")
         
-    x_train, x_test, y_train, y_test = Load_dataset(dataset_filename, test_size, class_label, verbose = False, plot = True)
+    t_start = time()
+     
+    x_train, x_test, y_train, y_test = Load_dataset(
+        dataset_filename, 
+        test_size, 
+        class_label, 
+        sampling = dataset_sampling, 
+        plot = False)
+    
+    if(verbose):
+        print(f"Training done in: {time() - t_start}s")
 
     #Decision Tree
+    if(verbose):
+        print("Classifier: Decision Tree")
+        
     dt = Metric("Decision Tree")
     Use_decision_tree_classifier(x_train, x_test, y_train, y_test, dt)
-    dt_metric.append(dt)
         
     #K-Nearest Neighbors (KNN)
+    if(verbose):
+        print("Classifier: K-Nearest Neighbors")
+        
     knn = Metric("K-NN")
     Use_knn_classifier(x_train, x_test, y_train, y_test, knn)
-    knn_metric.append(knn)
-
-    if (plot_metrics):
+    
+    #SVM
+    if(verbose):
+        print("Classifier: Support Vector Machine")
+        
+    svm = Metric("SVM")
+    #Use_svm_classifier(x_train, x_test, y_train, y_test, svm)
+    
+    metric_list = []
+    metric_list.append(dt)
+    metric_list.append(knn)
+    metric_list.append(svm)
+    
+    if(verbose):
+        print(f"Process completed in: {time() - t_start}s")
+        
         print(f"Training size: {1-test_size}")
         print(f"Testing size: {test_size}") 
         
-        Plot_metrics([dt, knn])
+        for m in metric_list:
+            if(m != None):
+                m.Print()
+
+    if (plot_metrics):
+        Plot_metrics(metric_list)
         
-        dt.Print()
-        knn.Print()
-        
-        dt.Plot_confusion_matrix()
-        knn.Plot_confusion_matrix()
-          
-        dt.Plot_roc_curve()
-        knn.Plot_roc_curve()
+        for m in metric_list:
+            if(m != None):
+                m.Plot_confusion_matrix()
+                m.Plot_roc_curve()
 
     # Save result to csv for some report statistics
     if (save_result):
         Record_metrics([dt, knn], "data_set\results.csv")
-         
-    """
-    if (len(test_size) > 1):
-        plt.plot(test_size, [m.accuracy for m in dt_metric], label="accuracy")
-        plt.plot(test_size, [m.missclassification for m in dt_metric], label="missclassification")
-        plt.plot(test_size, [m.precision for m in dt_metric], label="precision")
-        plt.plot(test_size, [m.recall_score for m in dt_metric], label="recall_score")
-        plt.plot(test_size, [m.f1 for m in dt_metric], label="f1")
-        plt.title("Decision Tree") 
-        plt.xlabel("Test size") 
-        plt.ylabel("Value") 
-        plt.legend() 
-        plt.show()
-    
-        plt.plot(test_size, [m.accuracy for m in knn_metric], label="accuracy")
-        plt.plot(test_size, [m.missclassification for m in knn_metric], label="missclassification")
-        plt.plot(test_size, [m.precision for m in knn_metric], label="precision")
-        plt.plot(test_size, [m.recall_score for m in knn_metric], label="recall_score")
-        plt.plot(test_size, [m.f1 for m in knn_metric], label="f1")
-        plt.title("K-NN") 
-        plt.xlabel("Test size") 
-        plt.ylabel("Value") 
-        plt.legend() 
-        plt.show()
-    """
-    
+       
 import preprocess as preproc
-
 preproc.main()
+main(verbose = True)

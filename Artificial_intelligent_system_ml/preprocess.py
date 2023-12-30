@@ -1,6 +1,8 @@
 import pandas as pd
 
 def main():
+    print("Starting preprocessing...")
+    """
     dataset_filename = "data_set\Company_Bankruptcy_Prediction.csv"
     
     # Carico il dataset
@@ -8,3 +10,4 @@ def main():
     
     df = pd.DataFrame(raw_data)
     df.to_csv(dataset_filename, index=False)
+    """
