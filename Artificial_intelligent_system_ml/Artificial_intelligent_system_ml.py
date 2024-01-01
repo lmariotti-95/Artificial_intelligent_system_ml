@@ -84,7 +84,7 @@ class Metric:
 Handle decision tree classifier
 """
 def Use_decision_tree_classifier(x_train, x_test, y_train, y_test, metric):
-    classifier = DecisionTreeClassifier()
+    classifier = DecisionTreeClassifier(criterion="entropy")
     classifier.fit(x_train, y_train)
     predictions = classifier.predict(x_test)
     
@@ -143,6 +143,25 @@ def Use_svm_classifier(x_train, x_test, y_train, y_test, metric):
     metric.fpr, metric.tpr, _ = roc_curve(y_test, y_pred_proba)
     metric.auc = roc_auc_score(y_test, y_pred_proba)
 
+from sklearn.ensemble import AdaBoostClassifier
+def Use_adaboost_classifier(x_train, x_test, y_train, y_test, metric):
+    classifier = AdaBoostClassifier()
+    classifier.fit(x_train, y_train)
+    predictions = classifier.predict(x_test)
+    
+    metric.classes = classifier.classes_    
+    metric.accuracy = accuracy_score(y_test, predictions)
+    metric.missclassification = 1 - metric.accuracy
+    metric.precision = precision_score(y_test, predictions, average = "weighted", zero_division=0)
+    metric.recall_score = recall_score(y_test, predictions, average = "weighted", zero_division=0)
+    metric.f1 = f1_score(y_test, predictions, average = "weighted", zero_division=0)
+    metric.conf_matrix = confusion_matrix(y_test, predictions)
+    
+    # https://scikit-learn.org/stable/modules/generated/sklearn.metrics.roc_curve.html#sklearn.metrics.roc_curve
+    y_pred_proba = classifier.predict_proba(x_test)[::,1]
+    metric.fpr, metric.tpr, _ = roc_curve(y_test, y_pred_proba)
+    metric.auc = roc_auc_score(y_test, y_pred_proba)
+    
 """
 Verify if a given list of metrics is valid aka:
 1) Is not null
@@ -279,7 +298,7 @@ def main(verbose = False):
     
     plot_metrics = True
     save_result = False
-    dataset_sampling = "oversampling"
+    dataset_sampling = None#"oversampling"
 
     test_size = .25
     
@@ -319,11 +338,18 @@ def main(verbose = False):
         
     svm = Metric("SVM")
     #Use_svm_classifier(x_train, x_test, y_train, y_test, svm)
+
+    if(verbose):
+        print("Classifier: AdaBoost")
+        
+    ada = Metric("AdaBoost")
+    Use_adaboost_classifier(x_train, x_test, y_train, y_test, ada)
     
     metric_list = []
     metric_list.append(dt)
     metric_list.append(knn)
     metric_list.append(svm)
+    metric_list.append(ada)
     
     if(verbose):
         print(f"Process completed in: {time() - t_start}s")
@@ -345,7 +371,7 @@ def main(verbose = False):
 
     # Save result to csv for some report statistics
     if (save_result):
-        Record_metrics([dt, knn], "data_set\results.csv")
+        Record_metrics(metric_list, "data_set\results.csv")
        
 import preprocess as preproc
 preproc.main()
