@@ -24,6 +24,10 @@ from collections import Counter
 
 from imblearn.over_sampling import RandomOverSampler
 from imblearn.under_sampling import  RandomUnderSampler
+from sklearn.ensemble import AdaBoostClassifier
+
+from joblib import dump, load
+import os
 
 class Metric:
     name = ""
@@ -56,6 +60,7 @@ class Metric:
         print(self.name + ":")
         df = pd.DataFrame([self.Get_metrics()])
         print(df)
+        print("-----------------")
         print("\n")
        
     def Plot_confusion_matrix(self):
@@ -79,36 +84,56 @@ class Metric:
         plt.title(f"{self.name} ROC Curve")
         plt.legend(loc="lower right")
         plt.show()
-        
-"""
-Handle decision tree classifier
-"""
-def Use_decision_tree_classifier(x_train, x_test, y_train, y_test, metric):
-    classifier = DecisionTreeClassifier(criterion="entropy")
-    classifier.fit(x_train, y_train)
-    predictions = classifier.predict(x_test)
+
+#region MODEL_TESTING        
+def Export_model(name, classifier):
+    model_filename = f"{name}.joblib"
+    if os.path.isfile(model_filename):
+        os.remove(model_filename)
+    dump(classifier, model_filename)
+
+def Test_model(file_name, test_file, labels):
+    """
+    Run a with a given model and a test dataset
     
-    metric.classes = classifier.classes_    
-    metric.accuracy = accuracy_score(y_test, predictions)
+    Parameters
+    ----------
+    :param str file_name: .joblib file that store a pre-generated model.
+    :param str test_file: .csv file that hold the test dataset.
+    :param str labels: Class names used as target for ML algorithms
+    
+    Returns 
+    ----------
+    Returns computed metric reporting all measures
+    rtype: Metric 
+    """
+    assert(os.path.isfile(file_name) == True), f"Unvalid model file {file_name}"
+    assert(os.path.isfile(test_file) == True), f"Unvalid test file {test_file}"
+    
+    # Loading model from file
+    model = load(file_name)
+    
+    # Example usage of the loaded model
+    raw_data = pd.read_csv(test_file)
+    expected = raw_data[labels]
+    
+    # Removing class column
+    raw_data = raw_data.drop(columns=labels)
+    predictions = model.predict(raw_data)
+    
+    metric = Metric(f"Results: {file_name}")
+    metric.accuracy = accuracy_score(expected, predictions)
     metric.missclassification = 1 - metric.accuracy
-    metric.precision = precision_score(y_test, predictions, average = "weighted", zero_division=0)
-    metric.recall_score = recall_score(y_test, predictions, average = "weighted", zero_division=0)
-    metric.f1 = f1_score(y_test, predictions, average = "weighted", zero_division=0)
-    metric.conf_matrix = confusion_matrix(y_test, predictions)
-    
-    # https://scikit-learn.org/stable/modules/generated/sklearn.metrics.roc_curve.html#sklearn.metrics.roc_curve
-    y_pred_proba = classifier.predict_proba(x_test)[:,1]
-    metric.fpr, metric.tpr, _ = roc_curve(y_test, y_pred_proba)
-    metric.auc = roc_auc_score(y_test, y_pred_proba)
-    
-"""
-Nearest neighbors classifier
-"""
-def Use_knn_classifier(x_train, x_test, y_train, y_test, metric, over_sample = False):
-    classifier = KNeighborsClassifier()
-    classifier.fit(x_train,y_train)
-    predictions = classifier.predict(x_test)
-    
+    metric.precision = precision_score(expected, predictions, average = "weighted", zero_division=0)
+    metric.recall_score = recall_score(expected, predictions, average = "weighted", zero_division=0)
+    metric.f1 = f1_score(expected, predictions, average = "weighted", zero_division=0)
+    metric.conf_matrix = confusion_matrix(expected, predictions)
+
+    return metric
+#endregion  
+
+#region CLASSIFIERS
+def Compute_metrics(classifier, predictions, x_test, y_test, metric, export = False):
     metric.classes = classifier.classes_    
     metric.accuracy = accuracy_score(y_test, predictions)
     metric.missclassification = 1 - metric.accuracy
@@ -122,53 +147,69 @@ def Use_knn_classifier(x_train, x_test, y_train, y_test, metric, over_sample = F
     metric.fpr, metric.tpr, _ = roc_curve(y_test, y_pred_proba)
     metric.auc = roc_auc_score(y_test, y_pred_proba)
     
-"""
-Support Vector Machine (SVM)
-"""
-def Use_svm_classifier(x_train, x_test, y_train, y_test, metric):
+    if(export):
+        Export_model(metric.name, classifier)
+    
+def Use_decision_tree_classifier(x_train, x_test, y_train, y_test, metric, export = False):
+    """
+    Decision tree classifier
+    """
+    classifier = DecisionTreeClassifier()
+    classifier.fit(x_train, y_train)
+    predictions = classifier.predict(x_test)
+    
+    Compute_metrics(classifier, predictions, x_test, y_test, metric, export)
+    
+def Use_knn_classifier(x_train, x_test, y_train, y_test, metric, export = False):
+    """
+    Nearest neighbors classifier
+    """
+    classifier = KNeighborsClassifier()
+    classifier.fit(x_train, y_train)
+    predictions = classifier.predict(x_test)
+    
+    Compute_metrics(classifier, predictions, x_test, y_test, metric, export)
+
+def Use_svm_classifier(x_train, x_test, y_train, y_test, metric, export = False):   
+    """
+    Support Vector Machine (SVM)
+    """
     classifier = SVC(class_weight='balanced', probability=True)
     classifier.fit(x_train, y_train)
     predictions = classifier.predict(x_test)
     
-    metric.classes = classifier.classes_    
-    metric.accuracy = accuracy_score(y_test, predictions)
-    metric.missclassification = 1 - metric.accuracy
-    metric.precision = precision_score(y_test, predictions, average = "weighted", zero_division=0)
-    metric.recall_score = recall_score(y_test, predictions, average = "weighted", zero_division=0)
-    metric.f1 = f1_score(y_test, predictions, average = "weighted", zero_division=0)
-    metric.conf_matrix = confusion_matrix(y_test, predictions)
+    Compute_metrics(classifier, predictions, x_test, y_test, metric, export)
     
-    # https://scikit-learn.org/stable/modules/generated/sklearn.metrics.roc_curve.html#sklearn.metrics.roc_curve
-    y_pred_proba = classifier.predict_proba(x_test)[::,1]
-    metric.fpr, metric.tpr, _ = roc_curve(y_test, y_pred_proba)
-    metric.auc = roc_auc_score(y_test, y_pred_proba)
-
-from sklearn.ensemble import AdaBoostClassifier
-def Use_adaboost_classifier(x_train, x_test, y_train, y_test, metric):
-    classifier = AdaBoostClassifier()
+def Use_adaboost_classifier(x_train, x_test, y_train, y_test, metric, export = False):
+    """
+    Ensemble AdaBoost
+    """
+    class_weight={
+        0: 0.033,
+        1: 1.0,
+    }
+    
+    weak_learner = DecisionTreeClassifier(
+        class_weight = class_weight, 
+        max_depth = 8
+    )
+    
+    classifier = AdaBoostClassifier(estimator=weak_learner)
+    
     classifier.fit(x_train, y_train)
     predictions = classifier.predict(x_test)
     
-    metric.classes = classifier.classes_    
-    metric.accuracy = accuracy_score(y_test, predictions)
-    metric.missclassification = 1 - metric.accuracy
-    metric.precision = precision_score(y_test, predictions, average = "weighted", zero_division=0)
-    metric.recall_score = recall_score(y_test, predictions, average = "weighted", zero_division=0)
-    metric.f1 = f1_score(y_test, predictions, average = "weighted", zero_division=0)
-    metric.conf_matrix = confusion_matrix(y_test, predictions)
+    Compute_metrics(classifier, predictions, x_test, y_test, metric, export)
     
-    # https://scikit-learn.org/stable/modules/generated/sklearn.metrics.roc_curve.html#sklearn.metrics.roc_curve
-    y_pred_proba = classifier.predict_proba(x_test)[::,1]
-    metric.fpr, metric.tpr, _ = roc_curve(y_test, y_pred_proba)
-    metric.auc = roc_auc_score(y_test, y_pred_proba)
-    
-"""
-Verify if a given list of metrics is valid aka:
-1) Is not null
-2) Has at least 1 element
-3) Each element is type(Metric)
-"""
+#endregion
+
 def Are_valid_metrics(metric_list):
+    """
+    Verify if a given list of metrics is valid aka:
+    1) Is not null
+    2) Has at least 1 element
+    3) Each element is type(Metric)
+    """
     if(metric_list == None):
         return False
     
@@ -180,11 +221,10 @@ def Are_valid_metrics(metric_list):
     
     return True
 
-"""
-Given a series of metrics plot their data
-Verbose = True to enable value printing on console
-"""
 def Plot_metrics(metrics):
+    """
+    Plot data for a list of metrics given in input
+    """
     # Watchdog for arguments consistency
     if(Are_valid_metrics(metrics) == False):
         return
@@ -237,29 +277,29 @@ def Record_metrics(metrics, file_name):
     df.to_csv(file_name, sep=';', decimal=',', index=False)
     
 #region DATASET_MANAGEMENT
-def size_mb(docs):
-    return sum(len(s.encode("utf-8")) for s in docs) / 1e6
-
-"""
-Load the dataset from a .csv file 
-
-Parameters
-----------
-file_name: string
-    csv file that hold the complete dataset.
-
-training_perc: float (0, 1) 
-    Percentage of samples used for training.
-    
-labels: list of strings
-    Class names used as target for ML algorithms
-    
-sampling: string default = None
-    "oversampling" - Enable oversampling for compensate imbalanced classes
-    "undersampleing" - Enable undersampleing for compensate imbalanced classes
-    "None" - Classes are loaded "as it is"
-"""
 def Load_dataset(file_name, test_perc, class_label, sampling = None, plot=False):
+    """
+    Load the dataset from a .csv file 
+
+    Parameters
+    ----------
+    :param str file_name: csv file that hold the complete dataset.
+    :param float training_perc: (0, 1) Percentage of samples used for training
+    :param str labels: Class names used as target for ML algorithms
+    :param str sampling: default = None
+        "oversampling" - Enable oversampling for compensate imbalanced classes
+        "undersampleing" - Enable undersampleing for compensate imbalanced classes
+        "None" - Classes are loaded "as it is"
+    :param bool plot: Enable classes distribution plotting
+    
+    Returns 
+    ----------
+    splitting: list, length=2 * len(arrays)
+        List containing train-test split of inputs.
+    """
+    
+    assert(os.path.isfile(file_name) == True), f"Unvalid dataset file {file_name}"
+
     raw_data = pd.read_csv(file_name)
     
     data = raw_data.drop(columns=class_label)
@@ -294,11 +334,11 @@ def Load_dataset(file_name, test_perc, class_label, sampling = None, plot=False)
 
 def main(verbose = False):
     class_label = "Bankrupt?"
-    dataset_filename = "data_set\Company_Bankruptcy_Prediction.csv"
+    dataset_filename = "data_set\\Company_Bankruptcy_Prediction.csv"
     
     plot_metrics = True
-    save_result = False
-    dataset_sampling = None#"oversampling"
+    save_result = True
+    dataset_sampling = "oversampling"
 
     test_size = .25
     
@@ -323,33 +363,44 @@ def main(verbose = False):
         print("Classifier: Decision Tree")
         
     dt = Metric("Decision Tree")
-    Use_decision_tree_classifier(x_train, x_test, y_train, y_test, dt)
+    Use_decision_tree_classifier(x_train, x_test, y_train, y_test, dt, export=False)
         
     #K-Nearest Neighbors (KNN)
     if(verbose):
         print("Classifier: K-Nearest Neighbors")
         
     knn = Metric("K-NN")
-    Use_knn_classifier(x_train, x_test, y_train, y_test, knn)
+    Use_knn_classifier(x_train, x_test, y_train, y_test, knn, export=False)
     
     #SVM
     if(verbose):
         print("Classifier: Support Vector Machine")
         
     svm = Metric("SVM")
-    #Use_svm_classifier(x_train, x_test, y_train, y_test, svm)
+    #Use_svm_classifier(x_train, x_test, y_train, y_test, svm, export=False)
 
     if(verbose):
         print("Classifier: AdaBoost")
         
     ada = Metric("AdaBoost")
-    Use_adaboost_classifier(x_train, x_test, y_train, y_test, ada)
+    Use_adaboost_classifier(x_train, x_test, y_train, y_test, ada, export=False)
     
     metric_list = []
     metric_list.append(dt)
     metric_list.append(knn)
     metric_list.append(svm)
     metric_list.append(ada)
+    
+    """
+    print("Test started")
+    test_dataset_filename = "data_set\\Company_Bankruptcy_Prediction_1.csv"
+    for m in metric_list:
+        model_file_name = f"{m.name}.joblib"
+        if(os.path.isfile(model_file_name)):
+            test_metric = Test_model(model_file_name, test_dataset_filename, class_label)
+            test_metric.Print()
+    print("Test completed")
+    """
     
     if(verbose):
         print(f"Process completed in: {time() - t_start}s")
@@ -369,10 +420,9 @@ def main(verbose = False):
                 m.Plot_confusion_matrix()
                 m.Plot_roc_curve()
 
+        
     # Save result to csv for some report statistics
     if (save_result):
-        Record_metrics(metric_list, "data_set\results.csv")
+        Record_metrics(metric_list, "data_set\\results.csv")
        
-import preprocess as preproc
-preproc.main()
 main(verbose = True)
