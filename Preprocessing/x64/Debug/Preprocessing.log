@@ -1,0 +1,3 @@
+﻿  CSV.cpp
+C:\Users\Lorenzo\source\repos\Artificial_intelligent_system_ml\Preprocessing\CSV.cpp(74): warning C4715: 'CSV::Write': not all control paths return a value
+  Preprocessing.vcxproj -> C:\Users\Lorenzo\source\repos\Artificial_intelligent_system_ml\x64\Debug\Preprocessing.exe

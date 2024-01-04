@@ -1,6 +1,8 @@
 # Import delle librerie necessarie
 from multiprocessing import get_all_start_methods
 from shutil import register_unpack_format
+from typing import ValuesView
+import weakref
 from numpy.random import f
 from scipy.sparse import data
 from sklearn.model_selection import train_test_split
@@ -14,6 +16,7 @@ from sklearn.preprocessing import label_binarize
 
 from sklearn.metrics import accuracy_score, balanced_accuracy_score, precision_score, recall_score, f1_score, confusion_matrix
 from sklearn.metrics import roc_curve, roc_auc_score
+from sklearn.utils.class_weight import compute_class_weight
 
 import seaborn as sns
 import numpy as np  
@@ -150,11 +153,31 @@ def Compute_metrics(classifier, predictions, x_test, y_test, metric, export = Fa
     if(export):
         Export_model(metric.name, classifier)
     
+def Get_classes_wgt(y_train):
+    
+    # https://scikit-learn.org/stable/modules/generated/sklearn.utils.class_weight.compute_class_weight.html
+    # n_samples / (n_classes * np.bincount(y))
+    class_cnt = Counter(y_train.values)
+    wgt_c0 = len(y_train.values) / (2 * class_cnt[0])
+    wgt_c1 = len(y_train.values) / (2 * class_cnt[1])
+    
+    class_weight={
+        0: wgt_c0,
+        1: wgt_c1,
+    }
+    
+    # returns 1 if oversampling is enabled   
+    return class_weight
+    
 def Use_decision_tree_classifier(x_train, x_test, y_train, y_test, metric, export = False):
     """
     Decision tree classifier
     """
-    classifier = DecisionTreeClassifier()
+    classifier = DecisionTreeClassifier(
+        class_weight = Get_classes_wgt(y_train),
+        random_state = 42
+    )
+    
     classifier.fit(x_train, y_train)
     predictions = classifier.predict(x_test)
     
@@ -164,7 +187,9 @@ def Use_knn_classifier(x_train, x_test, y_train, y_test, metric, export = False)
     """
     Nearest neighbors classifier
     """
-    classifier = KNeighborsClassifier()
+    classifier = KNeighborsClassifier(
+        n_neighbors=2
+    )
     classifier.fit(x_train, y_train)
     predictions = classifier.predict(x_test)
     
@@ -184,14 +209,11 @@ def Use_adaboost_classifier(x_train, x_test, y_train, y_test, metric, export = F
     """
     Ensemble AdaBoost
     """
-    class_weight={
-        0: 0.033,
-        1: 1.0,
-    }
-    
+
     weak_learner = DecisionTreeClassifier(
-        class_weight = class_weight, 
-        max_depth = 8
+        class_weight = Get_classes_wgt(y_train),
+        max_depth = 2,
+        random_state = 42,
     )
     
     classifier = AdaBoostClassifier(estimator=weak_learner)
@@ -310,10 +332,16 @@ def Load_dataset(file_name, test_perc, class_label, sampling = None, plot=False)
     # Check for sampling condition
     if(sampling != None):
         if(sampling == "oversampling"):
-            ros = RandomOverSampler(random_state=42)
+            ros = RandomOverSampler(
+                sampling_strategy = 'minority',
+                random_state=42
+            )
             x_train, y_train = ros.fit_resample(x_train, y_train)
         elif(sampling == "undersampling"):
-            ros =  RandomUnderSampler(random_state=42)
+            ros =  RandomUnderSampler(
+                sampling_strategy = 'not minority',
+                random_state=42
+            )
             x_train, y_train = ros.fit_resample(x_train, y_train)
 
     # Plot the distribution of class values
@@ -334,7 +362,8 @@ def Load_dataset(file_name, test_perc, class_label, sampling = None, plot=False)
 
 def main(verbose = False):
     class_label = "Bankrupt?"
-    dataset_filename = "data_set\\Company_Bankruptcy_Prediction.csv"
+    #dataset_filename = "data_set\\Company_Bankruptcy_Prediction.csv"
+    dataset_filename = "data_set\\processed.csv"
     
     plot_metrics = True
     save_result = True
@@ -347,7 +376,7 @@ def main(verbose = False):
         print(f"Sampling type: {dataset_sampling}")
         
     t_start = time()
-     
+    
     x_train, x_test, y_train, y_test = Load_dataset(
         dataset_filename, 
         test_size, 
@@ -373,10 +402,10 @@ def main(verbose = False):
     Use_knn_classifier(x_train, x_test, y_train, y_test, knn, export=False)
     
     #SVM
-    if(verbose):
-        print("Classifier: Support Vector Machine")
+    #if(verbose):
+    #    print("Classifier: Support Vector Machine")
         
-    svm = Metric("SVM")
+    #svm = Metric("SVM")
     #Use_svm_classifier(x_train, x_test, y_train, y_test, svm, export=False)
 
     if(verbose):
@@ -388,7 +417,7 @@ def main(verbose = False):
     metric_list = []
     metric_list.append(dt)
     metric_list.append(knn)
-    metric_list.append(svm)
+    #metric_list.append(svm)
     metric_list.append(ada)
     
     """
@@ -424,5 +453,5 @@ def main(verbose = False):
     # Save result to csv for some report statistics
     if (save_result):
         Record_metrics(metric_list, "data_set\\results.csv")
-       
+
 main(verbose = True)
