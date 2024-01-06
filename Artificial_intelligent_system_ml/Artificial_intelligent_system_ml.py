@@ -1,22 +1,14 @@
 # Import delle librerie necessarie
 from multiprocessing import get_all_start_methods
-from shutil import register_unpack_format
-from typing import ValuesView
-import weakref
-from numpy.random import f
-from scipy.sparse import data
 from sklearn.model_selection import train_test_split
 from sklearn.datasets import make_multilabel_classification
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.neighbors import KNeighborsClassifier
-from sklearn import svm
 from sklearn.svm import SVC
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.preprocessing import label_binarize
 
-from sklearn.metrics import accuracy_score, balanced_accuracy_score, precision_score, recall_score, f1_score, confusion_matrix
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, confusion_matrix
 from sklearn.metrics import roc_curve, roc_auc_score
-from sklearn.utils.class_weight import compute_class_weight
 
 import seaborn as sns
 import numpy as np  
@@ -169,7 +161,10 @@ def Get_classes_wgt(y_train):
     # returns 1 if oversampling is enabled   
     return class_weight
     
-def Use_decision_tree_classifier(x_train, x_test, y_train, y_test, metric, export = False):
+def Use_decision_tree_classifier(
+        x_train, x_test, y_train, y_test, 
+        metric, 
+        export = False):
     """
     Decision tree classifier
     """
@@ -183,12 +178,32 @@ def Use_decision_tree_classifier(x_train, x_test, y_train, y_test, metric, expor
     
     Compute_metrics(classifier, predictions, x_test, y_test, metric, export)
     
-def Use_knn_classifier(x_train, x_test, y_train, y_test, metric, export = False):
+def Use_knn_classifier(
+        x_train, x_test, y_train, y_test, 
+        metric, 
+        export = False):
     """
     Nearest neighbors classifier
     """
     classifier = KNeighborsClassifier(
         n_neighbors=2
+    )
+    classifier.fit(x_train, y_train)
+    predictions = classifier.predict(x_test)
+    
+    Compute_metrics(classifier, predictions, x_test, y_test, metric, export)
+
+def Use_rnd_forest_classifier(
+        x_train, x_test, y_train, y_test, 
+        metric, 
+        export = False):
+    """
+    Random Forest classifier
+    """
+    classifier = RandomForestClassifier(
+        n_estimators=100,
+        random_state = 42,
+        class_weight = Get_classes_wgt(y_train),
     )
     classifier.fit(x_train, y_train)
     predictions = classifier.predict(x_test)
@@ -204,16 +219,26 @@ def Use_svm_classifier(x_train, x_test, y_train, y_test, metric, export = False)
     predictions = classifier.predict(x_test)
     
     Compute_metrics(classifier, predictions, x_test, y_test, metric, export)
-    
-def Use_adaboost_classifier(x_train, x_test, y_train, y_test, metric, export = False):
+   
+def Use_adaboost_classifier(
+        x_train, x_test, y_train, y_test, 
+        metric, 
+        export = False):
     """
     Ensemble AdaBoost
     """
 
-    weak_learner = DecisionTreeClassifier(
-        class_weight = Get_classes_wgt(y_train),
-        max_depth = 2,
+    #weak_learner = DecisionTreeClassifier(
+    #    class_weight = Get_classes_wgt(y_train),
+    #    max_depth = 2,
+    #    random_state = 42,
+    #)
+
+    weak_learner = RandomForestClassifier(
+        n_estimators=100,
         random_state = 42,
+        max_depth = 4,
+        class_weight = Get_classes_wgt(y_train),
     )
     
     classifier = AdaBoostClassifier(estimator=weak_learner)
@@ -299,6 +324,8 @@ def Record_metrics(metrics, file_name):
     df.to_csv(file_name, sep=';', decimal=',', index=False)
     
 #region DATASET_MANAGEMENT
+from imblearn.combine import SMOTEENN
+
 def Load_dataset(file_name, test_perc, class_label, sampling = None, plot=False):
     """
     Load the dataset from a .csv file 
@@ -327,34 +354,39 @@ def Load_dataset(file_name, test_perc, class_label, sampling = None, plot=False)
     data = raw_data.drop(columns=class_label)
     target = raw_data[class_label]
     
-    x_train, x_test, y_train, y_test = train_test_split(data, target, test_size=test_perc, random_state=42)
+    x_train, x_test, y_train, y_test = train_test_split(
+        data, 
+        target, 
+        test_size=test_perc, 
+        random_state=42
+    )
     
     # Check for sampling condition
-    if(sampling != None):
-        if(sampling == "oversampling"):
-            ros = RandomOverSampler(
-                sampling_strategy = 'minority',
-                random_state=42
-            )
-            x_train, y_train = ros.fit_resample(x_train, y_train)
-        elif(sampling == "undersampling"):
-            ros =  RandomUnderSampler(
-                sampling_strategy = 'not minority',
-                random_state=42
-            )
-            x_train, y_train = ros.fit_resample(x_train, y_train)
+    if(sampling == "resample"):
+        re_samp = RandomOverSampler(
+            sampling_strategy = 'minority',
+            random_state=42
+        )
+        x_over, y_over = re_samp.fit_resample(x_train, y_train)
+        
+        re_samp = RandomUnderSampler(
+            sampling_strategy = 'majority',
+            random_state=42
+        )
+        x_under, y_under = re_samp.fit_resample(x_train, y_train)
+        
+        x_train = pd.concat([x_over, x_under], ignore_index=True)
+        y_train = pd.concat([y_over, y_under], ignore_index=True)
 
     # Plot the distribution of class values
     if (plot == True):
-        cnt = Counter(target.values)
+        cnt = Counter(y_train)
         y_values = cnt.values()
         x_values = cnt.keys()
-
-        plt.bar(x_values, y_values, width = .25)
-        plt.title(f'Class: {class_label}')
-        plt.ylabel('Count')
-        plt.xlabel(class_label)
-
+        
+        fig, ax = plt.subplots()
+        ax.pie(y_values, labels=x_values, autopct='%1.1f%%')
+        
         plt.show()
         
     return (x_train, x_test, y_train, y_test)
@@ -367,9 +399,14 @@ def main(verbose = False):
     
     plot_metrics = True
     save_result = True
-    dataset_sampling = "oversampling"
+    dataset_sampling = "resample"
 
     test_size = .25
+    
+    #fig, ax = plt.subplots()
+    #ax.pie([.75, .25], labels=["Train", "Test"], autopct='%1.1f%%')
+    #plt.title("Train/Test ratio")
+    #plt.show()
     
     if(verbose):
         print("Start training..")
@@ -382,7 +419,7 @@ def main(verbose = False):
         test_size, 
         class_label, 
         sampling = dataset_sampling, 
-        plot = False)
+        plot = True)
     
     if(verbose):
         print(f"Training done in: {time() - t_start}s")
@@ -401,6 +438,13 @@ def main(verbose = False):
     knn = Metric("K-NN")
     Use_knn_classifier(x_train, x_test, y_train, y_test, knn, export=False)
     
+    #Random Forest
+    if(verbose):
+        print("Classifier: Random Forest")
+        
+    rnd_forest = Metric("Random Forest")
+    Use_rnd_forest_classifier(x_train, x_test, y_train, y_test, rnd_forest, export=False)
+    
     #SVM
     #if(verbose):
     #    print("Classifier: Support Vector Machine")
@@ -417,6 +461,7 @@ def main(verbose = False):
     metric_list = []
     metric_list.append(dt)
     metric_list.append(knn)
+    metric_list.append(rnd_forest)
     #metric_list.append(svm)
     metric_list.append(ada)
     

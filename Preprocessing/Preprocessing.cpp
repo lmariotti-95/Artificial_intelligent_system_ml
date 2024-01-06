@@ -40,36 +40,56 @@ int main()
   _csv.Read(in_file_name, ',', rows);
 
   // Inizializzo la variabile di output
-  vector<vector<string>> output;
+  //vector<vector<string>> output;
 
-  for (int i = 0; i < rows[i].size(); i++)
+  auto attributes = transpose_matrix<string>(rows);
+
+  for (int i = 1; i < attributes.size(); i++)
   {
-    vector<double> v;
-    double max = 1;
-    for (int j = 1; j < rows.size(); j++)
-    {
-      double k = stod(rows[j][i]);
-      v.push_back(k);
+    double max = stod(*max_element(attributes[i].begin(), attributes[i].end()));
 
-      if (k > max)
-        max = k;
-    }
-
-    vector<string> new_row;
-    for (double x : v)
+    if (max > 1)
     {
-      if(max > 1)
+      for (int j = 1; j < attributes[i].size(); j++)
+      {
+        double x = stod(attributes[i][j]);
         x /= max;
-
-      new_row.push_back(to_string(x));
+        attributes[i][j] = to_string(x);
+      }
     }
-
-    output.push_back(new_row);
   }
 
-  auto t_output = transpose_matrix<string>(output);
-  t_output.insert(t_output.begin(), rows[0]);
-  _csv.Write(out_file_name, ',', t_output);
+  auto output = transpose_matrix<string>(attributes);
+  _csv.Write(out_file_name, ',', output);
+
+  //for (int i = 0; i < rows[i].size(); i++)
+  //{
+  //  vector<double> v;
+  //  double max = 1;
+  //  for (int j = 1; j < rows.size(); j++)
+  //  {
+  //    double k = stod(rows[j][i]);
+  //    v.push_back(k);
+  //
+  //    if (k > max)
+  //      max = k;
+  //  }
+  //
+  //  vector<string> new_row;
+  //  for (double x : v)
+  //  {
+  //    if(max > 1)
+  //      x /= max;
+  //
+  //    new_row.push_back(to_string(x));
+  //  }
+  //
+  //  output.push_back(new_row);
+  //}
+  //
+  //auto t_output = transpose_matrix<string>(output);
+  //t_output.insert(t_output.begin(), rows[0]);
+  //_csv.Write(out_file_name, ',', t_output);
 
   return 0;
 }
