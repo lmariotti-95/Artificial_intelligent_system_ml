@@ -1,0 +1,27 @@
+Classifier: Random Forest
+Classifier: AdaBoost
+Process completed in: 44.497798919677734s
+Training size: 0.75
+Testing size: 0.25
+Decision Tree:
+   accuracy  missclassification  precision  recall_score        f1
+0  0.954839            0.045161   0.955953      0.954839  0.955387
+-----------------
+
+
+K-NN:
+   accuracy  missclassification  precision  recall_score        f1
+0  0.957771            0.042229   0.953359      0.957771  0.955412
+-----------------
+
+
+Random Forest:
+   accuracy  missclassification  precision  recall_score        f1
+0  0.966569            0.033431   0.958291      0.966569  0.960629
+-----------------
+
+
+AdaBoost:
+   accuracy  missclassification  precision  recall_score        f1
+0  0.950733            0.049267   0.965254      0.950733  0.956747
+-----------------
