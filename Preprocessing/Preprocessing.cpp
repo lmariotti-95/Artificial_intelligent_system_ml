@@ -30,8 +30,9 @@ vector<vector<T>> transpose_matrix(vector<vector<T>>& matrix)
 
 int main()
 {
-  string in_file_name = "C:\\Users\\Lorenzo\\source\\repos\\Artificial_intelligent_system_ml\\Artificial_intelligent_system_ml\\data_set\\Company_Bankruptcy_Prediction.csv";
-  string out_file_name = "C:\\Users\\Lorenzo\\source\\repos\\Artificial_intelligent_system_ml\\Artificial_intelligent_system_ml\\data_set\\processed.csv";
+  string def_path = "C:\\Users\\Paola Diaz\\Desktop\\Lorenzo\\Artificial_intelligent_system_ml\\Assignment\\data_set";
+  string in_file_name = def_path + "Company_Bankruptcy_Prediction.csv";
+  string out_file_name = def_path + "processed.csv";
 
   vector<vector<string>> rows;
   CSV _csv = CSV();

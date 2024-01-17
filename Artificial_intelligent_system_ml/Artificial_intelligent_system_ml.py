@@ -210,16 +210,6 @@ def Use_rnd_forest_classifier(
     
     Compute_metrics(classifier, predictions, x_test, y_test, metric, export)
 
-def Use_svm_classifier(x_train, x_test, y_train, y_test, metric, export = False):   
-    """
-    Support Vector Machine (SVM)
-    """
-    classifier = SVC(class_weight='balanced', probability=True)
-    classifier.fit(x_train, y_train)
-    predictions = classifier.predict(x_test)
-    
-    Compute_metrics(classifier, predictions, x_test, y_test, metric, export)
-   
 def Use_adaboost_classifier(
         x_train, x_test, y_train, y_test, 
         metric, 
@@ -444,13 +434,6 @@ def main(verbose = False):
         
     rnd_forest = Metric("Random Forest")
     Use_rnd_forest_classifier(x_train, x_test, y_train, y_test, rnd_forest, export=False)
-    
-    #SVM
-    #if(verbose):
-    #    print("Classifier: Support Vector Machine")
-        
-    #svm = Metric("SVM")
-    #Use_svm_classifier(x_train, x_test, y_train, y_test, svm, export=False)
 
     if(verbose):
         print("Classifier: AdaBoost")
@@ -462,7 +445,6 @@ def main(verbose = False):
     metric_list.append(dt)
     metric_list.append(knn)
     metric_list.append(rnd_forest)
-    #metric_list.append(svm)
     metric_list.append(ada)
     
     """
